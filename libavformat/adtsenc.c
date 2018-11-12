@@ -121,7 +121,7 @@ static int adts_write_header(AVFormatContext *s)
 }
 
 static int adts_write_frame_header(ADTSContext *ctx,
-                                   uint8_t *buf, int size, int pce_size)
+                                   uint8_t *buf, int size, int pce_size, int adts_id)
 {
     PutBitContext pb;
 
@@ -136,7 +136,7 @@ static int adts_write_frame_header(ADTSContext *ctx,
 
     /* adts_fixed_header */
     put_bits(&pb, 12, 0xfff);   /* syncword */
-    put_bits(&pb, 1, 0);        /* ID */
+    put_bits(&pb, 1, adts_id);  /* ID */
     put_bits(&pb, 2, 0);        /* layer */
     put_bits(&pb, 1, 1);        /* protection_absent */
     put_bits(&pb, 2, ctx->objecttype); /* profile_objecttype */
@@ -184,8 +184,15 @@ static int adts_write_packet(AVFormatContext *s, AVPacket *pkt)
         }
     }
     if (adts->write_adts) {
+        // by dansoonie: Check if profile is mpeg2_aac_low or mpeg2_aac_he and pass
+        // the information to adts_write_frame_header so that it can properly set
+        // adts id when using mpeg2 aac
+        int adts_id = 0;
+        if (par->profile == FF_PROFILE_MPEG2_AAC_LOW ||
+            par->profile == FF_PROFILE_MPEG2_AAC_HE)
+            adts_id = 1;
         int err = adts_write_frame_header(adts, buf, pkt->size,
-                                             adts->pce_size);
+                                          adts->pce_size, adts_id);
         if (err < 0)
             return err;
         avio_write(pb, buf, ADTS_HEADER_SIZE);
