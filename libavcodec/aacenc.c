@@ -103,7 +103,14 @@ static int put_audio_specific_config(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
 
     init_put_bits(&pb, avctx->extradata, max_size);
-    put_bits(&pb, 5, s->profile+1); //profile
+    //put_bits(&pb, 5, s->profile+1); //profile
+    if (s->profile == FF_PROFILE_MPEG2_AAC_LOW) {
+        put_bits(&pb, 5, FF_PROFILE_AAC_LOW+1); //profile
+    } else if (s->profile == FF_PROFILE_MPEG2_AAC_HE) {
+        put_bits(&pb, 5, FF_PROFILE_AAC_HE+1); // profile
+    } else {
+        put_bits(&pb, 5, s->profile+1); // profile
+    }
     put_bits(&pb, 4, s->samplerate_index); //sample rate index
     put_bits(&pb, 4, channels);
     //GASpecificConfig
@@ -1030,7 +1037,9 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         if (avctx->profile == aacenc_profiles[i])
             break;
     if (avctx->profile == FF_PROFILE_MPEG2_AAC_LOW) {
-        avctx->profile = FF_PROFILE_AAC_LOW;
+        //avctx->profile = FF_PROFILE_AAC_LOW;
+        // Above statement was commented out becuase when using mpeg2_aac_low profile.
+        // Profile information must be preserved in order to create correct adts header.
         ERROR_IF(s->options.pred,
                  "Main prediction unavailable in the \"mpeg2_aac_low\" profile\n");
         ERROR_IF(s->options.ltp,
