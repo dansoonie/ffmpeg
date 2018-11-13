@@ -42,6 +42,10 @@
 #include "libavutil/timecode.h"
 #include "libavutil/time_internal.h"
 #include "libavutil/timestamp.h"
+#include "libavutil/intreadwrite.h"
+#include "libavutil/common.h"
+#include "libavcodec/internal.h"
+#include "libavformat/mpegts.h"
 
 typedef struct SegmentListEntry {
     int index;
@@ -880,6 +884,35 @@ calc_times:
             end_pts = seg->time * (seg->segment_count + 1);
         }
     }
+
+    // This nal unit check is added because NVENC is failing to provide IDR frame information with
+    // AV_PKT_FLAG_KEY flag set. Flag is set by examining nal unit.
+    if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
+        int size = pkt->size;
+        uint8_t *buf = pkt->data;
+        const uint8_t *p = buf, *buf_end = p + size;
+        uint32_t state = -1;
+        int extradd = (pkt->flags & AV_PKT_FLAG_KEY) ? st->codecpar->extradata_size : 0;
+        int ret = ff_check_h264_startcode(s, st, pkt);
+        if (ret < 0)
+            goto finish_nal_check;
+
+        if (extradd && AV_RB24(st->codecpar->extradata) > 1)
+            extradd = 0;
+
+        do {
+            p = avpriv_find_start_code(p, buf_end, &state);
+            av_log(s, AV_LOG_TRACE, "nal %"PRId32"\n", state & 0x1f);
+            if ((state & 0x1f) == 7)
+                extradd = 0;
+            if ((state & 0x1f) == 5) {
+                pkt->flags |= AV_PKT_FLAG_KEY;
+                break;
+            }
+        } while (p < buf_end && (state & 0x1f) != 9 &&
+                 (state & 0x1f) != 5 && (state & 0x1f) != 1);
+    }
+    finish_nal_check:
 
     ff_dlog(s, "packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d\n",
             pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
