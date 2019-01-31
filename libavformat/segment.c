@@ -537,10 +537,21 @@ static int parse_frames(void *log_ctx, int **frames, int *nb_frames,
         }
         f = strtol(fstr, &tailptr, 10);
         if (*tailptr || f <= 0 || f >= INT_MAX) {
-            av_log(log_ctx, AV_LOG_ERROR,
-                   "Invalid argument '%s', must be a positive integer <= INT64_MAX\n",
-                   fstr);
-            FAIL(AVERROR(EINVAL));
+            /*
+            dansoonie/segment_frames
+            This block has been modified so that a negative value can be accpeted.
+            A negative value will indicate that segments should be divided by that number's positive
+            value of frames. Only one negative value is allowed.
+            */
+            if (i > 0) {
+                av_log(log_ctx, AV_LOG_ERROR,
+                    "Invalid argument '%s', must be a positive integer <= INT64_MAX\n",
+                    fstr);
+                FAIL(AVERROR(EINVAL));
+            } else {
+                (*frames)[i] = f;
+                break;
+            }
         }
         (*frames)[i] = f;
 
@@ -864,8 +875,17 @@ calc_times:
         end_pts = seg->segment_count < seg->nb_times ?
             seg->times[seg->segment_count] : INT64_MAX;
     } else if (seg->frames) {
-        start_frame = seg->segment_count < seg->nb_frames ?
+        /*
+        dansoonie/segment_frames
+        If first frame is negative it means segmentation should occur periodically according to the positive number.
+        The if statement was added to handle that.
+        */
+        if (seg->frames[0] < 0) {
+            start_frame = (seg->segment_count + 1) * -seg->frames[0];
+        } else {
+            start_frame = seg->segment_count < seg->nb_frames ?
             seg->frames[seg->segment_count] : INT_MAX;
+        }
     } else {
         if (seg->use_clocktime) {
             int64_t avgt = av_gettime();
