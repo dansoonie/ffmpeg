@@ -39,3 +39,4 @@
 bin/
 build/
 bin_debug/
+.vscode/
